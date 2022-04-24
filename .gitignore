@@ -1,0 +1,6 @@
+.idea/
+data/*
+!data/.keep
+kratos.yml
+tusd
+minio
