@@ -12,27 +12,13 @@
 
 API which communicates with [Go Forensics Core](https://github.com/mooijtech/goforensics-core).
 
-### Installation
-
-MinIO and Tus must be in the same directory as the Go Forensics API.
-
-```bash
-# Download or clone the Go Forensics API
-$ git clone https://github.com/mooijtech/goforensics-api
-
-# Change directory
-$ cd goforensics-api
-```
+## Installation
 
 ### MinIO
 
 The core uses [MinIO](https://min.io/) to store PST files and attachments.
-Move the MinIO executable to the goforensics-api directory.
 
 ```bash
-# Change directory
-$ cd ~/path/to/goforensics-api
-
 # Make MinIO executable
 $ chmod +x ./minio
 
@@ -40,19 +26,15 @@ $ MINIO_ROOT_USER=admin MINIO_ROOT_PASSWORD=yourrootpassword ./minio server data
 
 # The console can be accessed via the browser at http://127.0.0.1:9001
 # Create a new user via the console with an access key, secret key and the "readwrite" permission.
-# The access key and secret key (environment variables) are required when starting the Go Forensics API.
+# The access key and secret key are required when starting the Go Forensics API (in the configuration file).
 ```
 
 ### Tus
 
 The dashboard uploads files to [Tus](https://github.com/tus/tusd) (resumable file uploads) which Tus uploads to MinIO.
-Move the Tus executable to the goforensics-api.
 
 ```bash
-# Change directory
-$ cd ~/path/to/goforensics-api
-
-# These environment variables are from setting up MinIO (in the Core).
+# These environment variables are from setting up MinIO.
 export AWS_ACCESS_KEY_ID=yourMinIOaccesskey
 export AWS_SECRET_ACCESS_KEY=yourMinIOsecretkey
 export AWS_REGION=eu-west-1
@@ -64,30 +46,24 @@ $ ./tusd -s3-endpoint http://127.0.0.1:9000 -s3-bucket BUCKET_NAME
 
 ### Ory Kratos
 
-Ory Kratos is used for identity management (authentication).
+[Ory Kratos](https://www.ory.sh/kratos/) is used for identity management (authentication).
 
 ```bash
-$ bash <(curl https://raw.githubusercontent.com/ory/meta/master/install.sh) -d -b . kratos v0.9.0-alpha.3
-$ sudo mv ./kratos /usr/local/bin/
-
-# Edit kratos.yml to your SMTP provider (we use Postmark) and path to the outlook-mapper, user-identity-schema.
+# Edit kratos-development.yml:
+# - Your SMTP provider (we use Postmark)
+# - Path to outlook-mapper and user-identity-schema
+#
 # Start Kratos 
 $ kratos serve -c kratos-development.yml --watch-courier
 ```
 
 ### Go Forensics API
 
-```bash
-# cd ~/path/to/goforensics-api
+**Required configuration** before starting the API can be found in [goforensics.yml](https://github.com/mooijtech/goforensics-api/blob/main/goforensics.yml).
 
-# Export required environment variables.
-$ export MINIO_BUCKET=yourMinIObucket
-$ export MINIO_ENDPOINT=127.0.0.1:9000
-$ export MINIO_ACCESS_KEY=yourMinIOaccesskey
-$ export MINIO_SECRET_KEY=yourMinIOsecretkey
-$ export MINIO_SECURE=false
-$ export OUTLOOK_CLIENT_ID=yourOutlookClientID
-$ export OUTLOOK_CLIENT_SECRET=yourOutlookClientSecret
+```bash
+# Change directory
+$ cd ~/path/to/goforensics-api
 
 # Start the API
 $ go run cmd/api.go
