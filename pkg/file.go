@@ -14,17 +14,19 @@ import (
 func (server *Server) handleFile() http.HandlerFunc {
 	return func(responseWriter http.ResponseWriter, request *http.Request) {
 		if request.Method == "GET" {
-			userUUID := mux.Vars(request)["userUUID"]
-			projectUUID := mux.Vars(request)["projectUUID"]
-			fileName := mux.Vars(request)["fileName"]
+			user, project, err := server.AuthenticateRequest(request)
 
-			// TODO - Verify the user exists and owns the project.
+			if err != nil {
+				Logger.Errorf("Failed to authenticate request: %s", err)
+				http.Error(responseWriter, "Failed to authenticate request.", http.StatusUnauthorized)
+				return
+			}
+
+			fileName := mux.Vars(request)["fileName"]
 
 			responseWriter.Header().Set("Content-Type", "application/octet-stream")
 
-			err := core.WriteFileToWriter(fmt.Sprintf("%s/%s/%s", userUUID, projectUUID, fileName), responseWriter)
-
-			if err != nil {
+			if err := core.WriteFileToWriter(fmt.Sprintf("%s/%s/%s", user.Id, project.UUID, fileName), responseWriter); err != nil {
 				Logger.Errorf("Failed to write file to writer: %s", err)
 				http.Error(responseWriter, "Failed to write file to writer.", http.StatusInternalServerError)
 				return

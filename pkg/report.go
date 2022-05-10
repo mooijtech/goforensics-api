@@ -16,11 +16,11 @@ func (server *Server) handleReport() http.HandlerFunc {
 
 			if err != nil {
 				Logger.Errorf("Failed to authenticate request: %s", err)
-				http.Error(responseWriter, "Failed to authenticate request.", http.StatusBadRequest)
+				http.Error(responseWriter, "Failed to authenticate request.", http.StatusUnauthorized)
 				return
 			}
 
-			bookmarks, err := core.GetBookmarksByProject(project)
+			bookmarks, err := core.GetBookmarksByProject(project.UUID, server.Database)
 
 			if err != nil {
 				Logger.Errorf("Failed to get bookmarks by project: %s", err)
@@ -28,21 +28,7 @@ func (server *Server) handleReport() http.HandlerFunc {
 				return
 			}
 
-			var messages []core.Message
-
-			for _, bookmark := range bookmarks {
-				message, err := core.GetMessageByUUID(bookmark.MessageUUID, project)
-
-				if err != nil {
-					Logger.Errorf("Failed to get message by UUID: %s", err)
-					http.Error(responseWriter, "Failed to get message by UUID.", http.StatusInternalServerError)
-					return
-				}
-
-				messages = append(messages, message)
-			}
-
-			outputPath, err := core.CreateHTMLReport(messages, project)
+			outputPath, err := core.CreateHTMLReport(bookmarks, project)
 
 			if err != nil {
 				Logger.Errorf("Failed to create HTML report: %s", err)
@@ -50,10 +36,8 @@ func (server *Server) handleReport() http.HandlerFunc {
 				return
 			}
 
-			written, err := responseWriter.Write([]byte(outputPath))
-
-			if err != nil {
-				Logger.Errorf("Failed to write response (wrote %d bytes): %s", written, err)
+			if _, err := responseWriter.Write([]byte(outputPath)); err != nil {
+				Logger.Errorf("Failed to write response: %s", err)
 				http.Error(responseWriter, "Failed to write response.", http.StatusInternalServerError)
 				return
 			}

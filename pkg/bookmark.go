@@ -10,19 +10,19 @@ import (
 	"net/http"
 )
 
-// handleBookmarks handles the bookmarks' endpoint.
+// handleBookmarks handles the "bookmarks" endpoint.
 func (server *Server) handleBookmarks() http.HandlerFunc {
 	return func(responseWriter http.ResponseWriter, request *http.Request) {
 		_, project, err := server.AuthenticateRequest(request)
 
 		if err != nil {
 			Logger.Errorf("Failed to authenticate request: %s", err)
-			http.Error(responseWriter, "Failed to authenticate request.", http.StatusBadRequest)
+			http.Error(responseWriter, "Failed to authenticate request.", http.StatusUnauthorized)
 			return
 		}
 
 		if request.Method == "POST" {
-			// Add bookmark.
+			// Add bookmarks.
 			var requestMap map[string]interface{}
 
 			if err := json.NewDecoder(request.Body).Decode(&requestMap); err != nil {
@@ -33,20 +33,16 @@ func (server *Server) handleBookmarks() http.HandlerFunc {
 
 			requestBookmarkUUIDs, ok := requestMap["bookmarks"].([]interface{})
 
-			if !ok {
-				Logger.Errorf("Failed to get request bookmark UUIDs: %s", requestMap["bookmarks"])
+			if !ok || len(requestBookmarkUUIDs) == 0 {
+				Logger.Errorf("Failed to get request bookmark UUIDs.")
 				http.Error(responseWriter, "Failed to get request bookmark UUIDs.", http.StatusBadRequest)
 				return
 			}
 
 			for _, requestBookmarkUUID := range requestBookmarkUUIDs {
-				var bookmark core.Bookmark
-
-				bookmark.MessageUUID = requestBookmarkUUID.(string)
-
-				if err := bookmark.Save(project); err != nil {
-					Logger.Errorf("Failed to save bookmark: %s", err)
-					http.Error(responseWriter, "Failed to save bookmark.", http.StatusInternalServerError)
+				if err := core.AddBookmark(requestBookmarkUUID.(string), project.UUID, server.Database); err != nil {
+					Logger.Errorf("Failed to add bookmark: %s", err)
+					http.Error(responseWriter, "Failed to add bookmark.", http.StatusInternalServerError)
 					return
 				}
 			}
@@ -58,7 +54,7 @@ func (server *Server) handleBookmarks() http.HandlerFunc {
 			}
 		} else if request.Method == "GET" {
 			// Get bookmarks by project.
-			bookmarks, err := core.GetBookmarksByProject(project)
+			bookmarks, err := core.GetBookmarksByProject(project.UUID, server.Database)
 
 			if err != nil {
 				Logger.Errorf("Failed to get bookmarks by project: %s", err)
@@ -66,21 +62,7 @@ func (server *Server) handleBookmarks() http.HandlerFunc {
 				return
 			}
 
-			var messages []core.Message
-
-			for _, bookmark := range bookmarks {
-				message, err := core.GetMessageByUUID(bookmark.MessageUUID, project)
-
-				if err != nil {
-					Logger.Errorf("Failed to get message by UUID: %s", err)
-					http.Error(responseWriter, "Failed to get message by UUID.", http.StatusInternalServerError)
-					return
-				}
-
-				messages = append(messages, message)
-			}
-
-			if err := json.NewEncoder(responseWriter).Encode(messages); err != nil {
+			if err := json.NewEncoder(responseWriter).Encode(bookmarks); err != nil {
 				Logger.Errorf("Failed to write response: %s", err)
 				http.Error(responseWriter, "Failed to write response.", http.StatusInternalServerError)
 				return
@@ -100,47 +82,19 @@ func (server *Server) handleBookmark() http.HandlerFunc {
 			return
 		}
 
-		if request.Method == "POST" {
-			// Get bookmark.
-			var requestMap map[string]string
-
-			if err := json.NewDecoder(request.Body).Decode(&requestMap); err != nil {
-				Logger.Errorf("Failed to decode request body: %s", err)
-				http.Error(responseWriter, "Failed to decode request body.", http.StatusBadRequest)
-				return
-			}
-
-			messageUUID, ok := requestMap["message_uuid"]
-
-			if !ok {
-				Logger.Errorf("Failed to get message UUID from request.")
-				http.Error(responseWriter, "Failed to get message UUID from request.", http.StatusBadRequest)
-				return
-			}
-
-			bookmark, err := core.GetBookmark(messageUUID, project)
-
-			if err != nil {
-				Logger.Errorf("Failed to get bookmark: %s", err)
-				http.Error(responseWriter, "Failed to get bookmark.", http.StatusInternalServerError)
-				return
-			}
-
-			if err := json.NewEncoder(responseWriter).Encode(bookmark); err != nil {
-				Logger.Errorf("Failed to encode response: %s", err)
-				http.Error(responseWriter, "Failed to encode response.", http.StatusInternalServerError)
-				return
-			}
-		} else if request.Method == "DELETE" {
+		if request.Method == "DELETE" {
 			// Delete bookmark.
-			bookmarkUUID := mux.Vars(request)["bookmarkUUID"]
+			messageUUID := mux.Vars(request)["uuid"]
 
-			err := core.DeleteBookmark(bookmarkUUID, project)
-
-			if err != nil {
+			if err := core.RemoveBookmark(messageUUID, project.UUID, server.Database); err != nil {
 				Logger.Errorf("Failed to delete bookmark: %s", err)
 				http.Error(responseWriter, "Failed to delete bookmark.", http.StatusInternalServerError)
 				return
+			}
+
+			if _, err := responseWriter.Write([]byte("{\"status\": \"OK\"}")); err != nil {
+				Logger.Errorf("Failed to write response: %s", err)
+				http.Error(responseWriter, "Failed to write response.", http.StatusInternalServerError)
 			}
 		}
 	}

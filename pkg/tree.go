@@ -17,11 +17,11 @@ func (server *Server) handleTree() http.HandlerFunc {
 
 			if err != nil {
 				Logger.Errorf("Failed to authenticate request: %s", err)
-				http.Error(responseWriter, "Failed to authenticate request.", http.StatusBadRequest)
+				http.Error(responseWriter, "Failed to authenticate request.", http.StatusUnauthorized)
 				return
 			}
 
-			rootTreeNodesByProjectUUID, err := core.GetRootTreeNodesByProject(project)
+			rootTreeNodes, err := core.GetRootTreeNodes(project.UUID, server.Database)
 
 			if err != nil {
 				Logger.Errorf("Failed to get root tree nodes by project UUID: %s", err)
@@ -29,37 +29,35 @@ func (server *Server) handleTree() http.HandlerFunc {
 				return
 			}
 
-			if len(rootTreeNodesByProjectUUID) == 0 {
+			if len(rootTreeNodes) == 0 {
 				Logger.Error("Failed to find root tree nodes by project UUID.")
 				http.Error(responseWriter, "Failed to find root tree nodes by project UUID.", http.StatusInternalServerError)
 				return
 			}
 
-			var treeNodeResponses []core.TreeNodeDTO
+			var treeNodeDTOs []core.TreeNodeDTO
 
-			for i, treeNodeRoot := range rootTreeNodesByProjectUUID {
-				treeNodeResponses = append(treeNodeResponses, core.TreeNodeDTO{
+			for i, treeNodeRoot := range rootTreeNodes {
+				treeNodeDTOs = append(treeNodeDTOs, core.TreeNodeDTO{
 					Value:    treeNodeRoot.FolderUUID,
 					Label:    treeNodeRoot.Title,
 					Children: []core.TreeNodeDTO{},
 				})
 
-				treeNodes, err := core.WalkTreeNodeChildren(treeNodeRoot.FolderUUID, project)
+				treeNodes, err := core.WalkTreeNodeChildren(treeNodeRoot.FolderUUID, project.UUID, server.Database)
 
 				if err != nil {
-					Logger.Errorf("Failed to walk tree node response children: %s", err)
-					http.Error(responseWriter, "Failed to walk tree node response children.", http.StatusInternalServerError)
+					Logger.Errorf("Failed to walk tree node children: %s", err)
+					http.Error(responseWriter, "Failed to walk tree node children.", http.StatusInternalServerError)
 					return
 				}
 
 				for _, treeNode := range treeNodes {
-					treeNodeResponses[i].Children = append(treeNodeResponses[i].Children, treeNode)
+					treeNodeDTOs[i].Children = append(treeNodeDTOs[i].Children, treeNode)
 				}
 			}
 
-			err = json.NewEncoder(responseWriter).Encode(&treeNodeResponses)
-
-			if err != nil {
+			if err := json.NewEncoder(responseWriter).Encode(&treeNodeDTOs); err != nil {
 				Logger.Errorf("Failed to encode response: %s", err)
 				http.Error(responseWriter, "Failed to encode response.", http.StatusInternalServerError)
 				return

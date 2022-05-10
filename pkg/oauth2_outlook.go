@@ -7,8 +7,21 @@ import (
 	"fmt"
 	core "github.com/mooijtech/goforensics-core/pkg"
 	"github.com/r3labs/sse/v2"
+	"github.com/spf13/viper"
 	"net/http"
 )
+
+// GoForensicsDashboardURL defines the URL to the dashboard.
+var GoForensicsDashboardURL string
+
+// init initializes the GoForensicsDashboardURL.
+func init() {
+	if !viper.IsSet("go_forensics_dashboard_url") {
+		Logger.Fatalf("unset go_forensics_dashboard_url configuration variable")
+	}
+
+	GoForensicsDashboardURL = viper.GetString("go_forensics_dashboard_url")
+}
 
 // handleOutlookEmailsOAuth2 handles the Outlook OAuth2 redirect.
 func (server *Server) handleOutlookEmailsOAuth2() http.HandlerFunc {
@@ -59,7 +72,7 @@ func (server *Server) handleOutlookEmailsOAuth2Callback() http.HandlerFunc {
 			}
 		}()
 
-		http.Redirect(responseWriter, request, "http://localhost:3000/loading?projectId="+project.UUID, http.StatusTemporaryRedirect)
+		http.Redirect(responseWriter, request, fmt.Sprintf("%s/loading?projectUUID=%s", GoForensicsDashboardURL, project.UUID), http.StatusTemporaryRedirect)
 	}
 }
 
@@ -92,7 +105,7 @@ func (server *Server) handleOutlookUserProfileOAuth2Callback() http.HandlerFunc 
 		// TODO - Update the user traits with the userEmail (for IMAP -> imapEmail trait).
 		Logger.Infof("Got user email: %s", userEmail)
 
-		http.Redirect(responseWriter, request, "http://localhost:1337/outlook/emails/auth", http.StatusTemporaryRedirect)
+		http.Redirect(responseWriter, request, fmt.Sprintf("%s/outlook/emails/auth", core.GoForensicsAPIURL), http.StatusTemporaryRedirect)
 	}
 }
 

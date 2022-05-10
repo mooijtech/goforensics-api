@@ -20,21 +20,19 @@ func (server *Server) handleProjects() http.HandlerFunc {
 
 			if err != nil {
 				Logger.Errorf("Failed to authenticate user: %s", err)
-				http.Error(responseWriter, "Failed to authenticate user.", http.StatusBadRequest)
+				http.Error(responseWriter, "Failed to authenticate user.", http.StatusUnauthorized)
 				return
 			}
 
-			projects, err := core.GetProjectsByUserUUID(user.Id, server.Database)
+			projects, err := core.GetProjectsByUser(user.Id, server.Database)
 
 			if err != nil {
-				Logger.Errorf("Failed to find projects from user UUID: %s", user.Id)
+				Logger.Errorf("Failed to find projects from user: %s", err)
 				http.Error(responseWriter, "Failed to find projects.", http.StatusNotFound)
 				return
 			}
 
-			err = json.NewEncoder(responseWriter).Encode(&projects)
-
-			if err != nil {
+			if err := json.NewEncoder(responseWriter).Encode(&projects); err != nil {
 				Logger.Errorf("Failed to encode response: %s", err)
 				http.Error(responseWriter, "Failed to encode response.", http.StatusInternalServerError)
 				return
@@ -49,59 +47,55 @@ func (server *Server) handleProjects() http.HandlerFunc {
 				return
 			}
 
-			var project core.Project
+			var requestMap map[string]string
 
-			err = json.NewDecoder(request.Body).Decode(&project)
-
-			if err != nil {
+			if err := json.NewDecoder(request.Body).Decode(&requestMap); err != nil {
 				Logger.Errorf("Failed to decode request body: %s", err)
 				http.Error(responseWriter, "Failed to decode request body.", http.StatusBadRequest)
 				return
 			}
 
+			projectName, ok := requestMap["projectName"]
+
+			if !ok {
+				Logger.Errorf("Failed to get projectName.")
+				http.Error(responseWriter, "Failed to get projectName.", http.StatusBadRequest)
+				return
+			}
+
+			var project core.Project
+
 			project.UUID = core.NewUUID()
-			project.UserUUID = user.Id
+			project.Name = projectName
 			project.CreationDate = int(time.Now().Unix())
 
 			Logger.Infof("Creating project (%s): %s...", project.UUID, project.Name)
 
-			err = project.Save(server.Database)
-
-			if err != nil {
+			if err := project.Save(server.Database); err != nil {
 				Logger.Errorf("Failed to save project: %s", err)
 				http.Error(responseWriter, "Failed to save project.", http.StatusInternalServerError)
 				return
 			}
 
+			if err := core.AddProjectUser(project.UUID, user.Id, server.Database); err != nil {
+				Logger.Errorf("Failed to add project to user: %s", err)
+				http.Error(responseWriter, "Failed to add project to user.", http.StatusInternalServerError)
+				return
+			}
+
 			directoryPaths := []string{
-				core.GetProjectDirectory(project),
-				core.GetProjectTempDirectory(project),
+				core.GetProjectDirectory(project.UUID),
+				core.GetProjectTempDirectory(project.UUID),
 			}
 
 			for _, directory := range directoryPaths {
 				err = os.MkdirAll(directory, 0755)
 
 				if err != nil {
-					Logger.Errorf("Failed to create user project directories: %s", err)
-					http.Error(responseWriter, "Failed to create user project directories.", http.StatusInternalServerError)
+					Logger.Errorf("Failed to create project directories: %s", err)
+					http.Error(responseWriter, "Failed to create project directories.", http.StatusInternalServerError)
 					return
 				}
-			}
-
-			database, err := core.GetProjectDatabase(project)
-
-			if err != nil {
-				Logger.Error("Failed to get project database: %s", err)
-				http.Error(responseWriter, "Failed to get project database.", http.StatusInternalServerError)
-				return
-			}
-
-			err = core.CreateProjectDatabaseTables(database)
-
-			if err != nil {
-				Logger.Error("Failed to create project database tables: %s", err)
-				http.Error(responseWriter, "Failed to create project database tables.", http.StatusInternalServerError)
-				return
 			}
 
 			session, err := server.CookieStore.Get(request, "session")
@@ -120,9 +114,7 @@ func (server *Server) handleProjects() http.HandlerFunc {
 				return
 			}
 
-			err = json.NewEncoder(responseWriter).Encode(&project)
-
-			if err != nil {
+			if err := json.NewEncoder(responseWriter).Encode(&project); err != nil {
 				Logger.Errorf("Failed to encode response: %s", err)
 				http.Error(responseWriter, "Failed to encode response.", http.StatusInternalServerError)
 				return
@@ -140,19 +132,33 @@ func (server *Server) handleSetProject() http.HandlerFunc {
 
 			if err != nil {
 				Logger.Errorf("Failed to authenticate user: %s", err)
-				http.Error(responseWriter, "Failed to authenticate user.", http.StatusBadRequest)
+				http.Error(responseWriter, "Failed to authenticate user.", http.StatusUnauthorized)
 				return
 			}
 
-			var project core.Project
+			var requestMap map[string]string
 
-			if err := json.NewDecoder(request.Body).Decode(&project); err != nil {
+			if err := json.NewDecoder(request.Body).Decode(&requestMap); err != nil {
 				Logger.Errorf("Failed to decode request body: %s", err)
 				http.Error(responseWriter, "Failed to decode request body.", http.StatusBadRequest)
 				return
 			}
 
-			_, err = core.GetProjectByUUID(project.UUID, user.Id, server.Database)
+			projectUUID, ok := requestMap["projectUUID"]
+
+			if !ok {
+				Logger.Errorf("Failed to get projectUUID.")
+				http.Error(responseWriter, "Failed to get projectUUID.", http.StatusBadRequest)
+				return
+			}
+
+			if !core.ProjectHasUser(projectUUID, user.Id, server.Database) {
+				Logger.Errorf("User is not assigned to this project.")
+				http.Error(responseWriter, "User is not assigned to this project.", http.StatusBadRequest)
+				return
+			}
+
+			_, err = core.GetProjectByUUID(projectUUID, server.Database)
 
 			if err != nil {
 				Logger.Errorf("Failed to get project by UUID: %s", err)
@@ -168,7 +174,7 @@ func (server *Server) handleSetProject() http.HandlerFunc {
 				return
 			}
 
-			session.Values["projectUUID"] = project.UUID
+			session.Values["projectUUID"] = projectUUID
 
 			if err := session.Save(request, responseWriter); err != nil {
 				Logger.Errorf("Failed to save session: %s", err)
@@ -176,10 +182,8 @@ func (server *Server) handleSetProject() http.HandlerFunc {
 				return
 			}
 
-			written, err := responseWriter.Write([]byte("{\"status\": \"OK\"}"))
-
-			if err != nil {
-				Logger.Errorf("Failed to write response (wrote %d bytes): %s", written, err)
+			if _, err := responseWriter.Write([]byte("{\"status\": \"OK\"}")); err != nil {
+				Logger.Errorf("Failed to write response: %s", err)
 				http.Error(responseWriter, "Failed to write response.", http.StatusInternalServerError)
 				return
 			}

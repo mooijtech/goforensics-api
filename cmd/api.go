@@ -13,23 +13,23 @@ import (
 )
 
 func main() {
-	serverDatabase, err := core.GetServerDatabase()
+	database, err := core.NewDatabase()
 
 	if err != nil {
 		api.Logger.Fatalf("Failed to get database: %s", err)
 		return
 	}
 
-	err = core.CreateServerDatabaseTables(serverDatabase)
+	err = core.CreateDatabaseTables(database)
 
 	if err != nil {
-		api.Logger.Fatalf("Failed to create server database tables: %s", err)
+		api.Logger.Fatalf("Failed to create database tables: %s", err)
 		return
 	}
 
 	server := api.Server{
 		Router:           mux.NewRouter(),
-		Database:         serverDatabase,
+		Database:         database,
 		CookieStore:      sessions.NewCookieStore(securecookie.GenerateRandomKey(32)),
 		ServerSentEvents: sse.New(),
 	}

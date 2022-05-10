@@ -5,8 +5,16 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/gorilla/mux"
 	core "github.com/mooijtech/goforensics-core/pkg"
 	"net/http"
+)
+
+// Constants defining the search types.
+const (
+	SearchTypeTree    = "TREE"
+	SearchTypeMessage = "MESSAGE"
+	SearchTypeQuery   = "QUERY"
 )
 
 // handleSearch handles the search endpoint.
@@ -17,7 +25,7 @@ func (server *Server) handleSearch() http.HandlerFunc {
 
 			if err != nil {
 				Logger.Errorf("Failed to authenticate request: %s", err)
-				http.Error(responseWriter, "Failed to authenticate request.", http.StatusBadRequest)
+				http.Error(responseWriter, "Failed to authenticate request.", http.StatusUnauthorized)
 				return
 			}
 
@@ -31,21 +39,34 @@ func (server *Server) handleSearch() http.HandlerFunc {
 				return
 			}
 
-			requestTreeNodeUUIDs := requestBody["treeNodeUUIDs"] // TODO - Rename this to folderUUIDs
-			requestMessageUUID := requestBody["messageUUID"]
-			requestQuery := requestBody["query"]
+			searchType := mux.Vars(request)["searchType"]
 
-			Logger.Infof("Request tree node UUIDs: %s", requestTreeNodeUUIDs)
+			switch searchType {
+			case SearchTypeTree:
+				// Get messages from the specified folders (tree nodes).
+				requestTreeNodeUUIDs, ok := requestBody["treeNodeUUIDs"].([]interface{})
 
-			if requestTreeNodeUUIDs != nil && len(requestTreeNodeUUIDs.([]interface{})) != 0 {
-				// Get messages from the specified folders.
+				if !ok || len(requestTreeNodeUUIDs) == 0 {
+					Logger.Errorf("Failed to get request treeNodeUUIDs.")
+					http.Error(responseWriter, "Failed to get request treeNodeUUIDs.", http.StatusBadRequest)
+					return
+				}
+
 				var treeNodeUUIDs []string
 
-				// Get all the children of this folder.
-				for _, treeNodeUUID := range requestTreeNodeUUIDs.([]interface{}) {
-					treeNodeUUIDs = append(treeNodeUUIDs, treeNodeUUID.(string))
+				// Create the list of tree node UUIDs and walk the tree node children.
+				for _, requestTreeNodeUUID := range requestTreeNodeUUIDs {
+					treeNodeUUID, ok := requestTreeNodeUUID.(string)
 
-					treeNodeChildrenUUIDs, err := core.WalkTreeNodeChildrenUUIDs(treeNodeUUID.(string), project)
+					if !ok {
+						Logger.Errorf("Failed to get request treeNodeUUID.")
+						http.Error(responseWriter, "Failed to get request treeNodeUUID.", http.StatusBadRequest)
+						return
+					}
+
+					treeNodeUUIDs = append(treeNodeUUIDs, treeNodeUUID)
+
+					treeNodeChildrenUUIDs, err := core.WalkTreeNodeChildrenUUIDs(treeNodeUUID, project.UUID, server.Database)
 
 					if err != nil {
 						Logger.Errorf("Failed to get tree node children UUIDs: %s", err)
@@ -56,9 +77,7 @@ func (server *Server) handleSearch() http.HandlerFunc {
 					treeNodeUUIDs = append(treeNodeUUIDs, treeNodeChildrenUUIDs...)
 				}
 
-				Logger.Infof("Tree node UUIDs (with children): %s", treeNodeUUIDs)
-
-				messageRows, err := core.GetMessagesFromFolders(treeNodeUUIDs, project)
+				messages, err := core.GetMessagesFromFolders(treeNodeUUIDs, project.UUID, server.Database)
 
 				if err != nil {
 					Logger.Errorf("Failed to perform search: %s", err)
@@ -66,26 +85,25 @@ func (server *Server) handleSearch() http.HandlerFunc {
 					return
 				}
 
-				err = json.NewEncoder(responseWriter).Encode(&messageRows)
-
-				if err != nil {
+				if err := json.NewEncoder(responseWriter).Encode(&messages); err != nil {
 					Logger.Errorf("Failed to encode messages.")
 					http.Error(responseWriter, "Failed to encode messages.", http.StatusInternalServerError)
 					return
 				}
-			} else if requestMessageUUID != nil {
-				var messageUUID string
+			case SearchTypeMessage:
+				// Get a specific message.
+				messageUUID, ok := requestBody["messageUUID"].(string)
 
-				// Convert []interface{} to string
-				for _, x := range requestMessageUUID.([]interface{}) {
-					messageUUID = x.(string)
-					break
+				if !ok {
+					Logger.Errorf("Failed to get request messageUUID.")
+					http.Error(responseWriter, "Failed to get request messageUUID.", http.StatusBadRequest)
+					return
 				}
 
-				message, err := core.GetMessageByUUID(messageUUID, project)
+				message, err := core.GetMessageByUUID(messageUUID, project.UUID, server.Database)
 
 				if err != nil {
-					Logger.Errorf("Failed to get message: %s", requestMessageUUID.(string))
+					Logger.Errorf("Failed to get message: %s", err)
 					http.Error(responseWriter, "Failed to get message.", http.StatusInternalServerError)
 					return
 				}
@@ -95,10 +113,17 @@ func (server *Server) handleSearch() http.HandlerFunc {
 					http.Error(responseWriter, "Failed to encode message.", http.StatusInternalServerError)
 					return
 				}
-			} else if requestQuery != nil {
-				Logger.Infof("Request query: %s", requestQuery)
+			case SearchTypeQuery:
+				// Search query.
+				query, ok := requestBody["query"].(string)
 
-				messages, err := core.GetMessagesFromQuery(requestQuery.(string), project)
+				if !ok {
+					Logger.Errorf("Failed to get search query.")
+					http.Error(responseWriter, "Failed to get search query.", http.StatusBadRequest)
+					return
+				}
+
+				messages, err := core.GetMessagesFromQuery(query, project.UUID, server.Database)
 
 				if err != nil {
 					Logger.Errorf("Failed to get messages from query: %s", err)
@@ -106,9 +131,7 @@ func (server *Server) handleSearch() http.HandlerFunc {
 					return
 				}
 
-				err = json.NewEncoder(responseWriter).Encode(messages)
-
-				if err != nil {
+				if err := json.NewEncoder(responseWriter).Encode(messages); err != nil {
 					Logger.Errorf("Failed to write response: %s", err)
 					http.Error(responseWriter, "Failed to write response.", http.StatusInternalServerError)
 					return

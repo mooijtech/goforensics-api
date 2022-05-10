@@ -16,12 +16,12 @@ func (server *Server) handleNetwork() http.HandlerFunc {
 
 		if err != nil {
 			Logger.Errorf("Failed to authenticate request: %s", err)
-			http.Error(responseWriter, "Failed to authenticate request.", http.StatusBadRequest)
+			http.Error(responseWriter, "Failed to authenticate request.", http.StatusUnauthorized)
 			return
 		}
 
 		if request.Method == "GET" {
-			network, err := core.GetNetwork(project)
+			network, err := core.GetNetwork(project.UUID, server.Database)
 
 			if err != nil {
 				Logger.Errorf("Failed to get network: %s", err)

@@ -6,9 +6,22 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	core "github.com/mooijtech/goforensics-core/pkg"
+	"github.com/spf13/viper"
 	"net/http"
 )
+
+// OryKratosURL defines the URL where Ory Kratos is running.
+var OryKratosURL string
+
+func init() {
+	if !viper.IsSet("ory_kratos_url") {
+		Logger.Fatalf("unset ory_kratos_url configuration variable")
+	}
+
+	OryKratosURL = viper.GetString("ory_kratos_url")
+}
 
 // AuthenticateRequest authenticates the request (user and current project).
 func (server *Server) AuthenticateRequest(request *http.Request) (core.User, core.Project, error) {
@@ -30,7 +43,11 @@ func (server *Server) AuthenticateRequest(request *http.Request) (core.User, cor
 		return core.User{}, core.Project{}, errors.New("projectUUID is not a string")
 	}
 
-	project, err := core.GetProjectByUUID(projectUUID, user.Id, server.Database)
+	if !core.ProjectHasUser(projectUUID, user.Id, server.Database) {
+		return core.User{}, core.Project{}, errors.New("project is not assigned to this user")
+	}
+
+	project, err := core.GetProjectByUUID(projectUUID, server.Database)
 
 	if err != nil {
 		return core.User{}, core.Project{}, err
@@ -47,7 +64,7 @@ func (server *Server) AuthenticateUser(request *http.Request) (core.User, error)
 		return core.User{}, err
 	}
 
-	request, err = http.NewRequest("GET", "http://localhost:4433/sessions/whoami", nil)
+	request, err = http.NewRequest("GET", fmt.Sprintf("%s/sessions/whoami", OryKratosURL), nil)
 
 	if err != nil {
 		return core.User{}, err

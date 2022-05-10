@@ -18,7 +18,7 @@ func (server *Server) handleExport() http.HandlerFunc {
 
 			if err != nil {
 				Logger.Errorf("Failed to authenticate request: %s", err)
-				http.Error(responseWriter, "Failed to authenticate request.", http.StatusBadRequest)
+				http.Error(responseWriter, "Failed to authenticate request.", http.StatusUnauthorized)
 				return
 			}
 
@@ -38,7 +38,7 @@ func (server *Server) handleExport() http.HandlerFunc {
 				return
 			}
 
-			exportPath, err := core.ExportAttachments(strings.Split(extensions, "\n"), project)
+			exportPath, err := core.ExportAttachmentsByProject(strings.Split(extensions, "\n"), project.UUID)
 
 			if err != nil {
 				Logger.Errorf("Failed to export attachments: %s", err)
@@ -46,10 +46,8 @@ func (server *Server) handleExport() http.HandlerFunc {
 				return
 			}
 
-			written, err := responseWriter.Write([]byte(exportPath))
-
-			if err != nil {
-				Logger.Errorf("Failed to write response (wrote %d bytes): %s", written, err)
+			if _, err := responseWriter.Write([]byte(exportPath)); err != nil {
+				Logger.Errorf("Failed to write response: %s", err)
 				http.Error(responseWriter, "Failed to write response.", http.StatusInternalServerError)
 				return
 			}
