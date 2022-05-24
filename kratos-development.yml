@@ -24,7 +24,7 @@ selfservice:
         providers:
           - id: outlook
             provider: microsoft
-            mapper_url: file:///home/bot/Documents/Projects/goforensics-api/outlook-mapper.json
+            mapper_url: file:///path/to/goforensics-api/outlook-mapper.json
             client_id: CLIENT_ID
             client_secret: CLIENT_SECRET
             scope:
@@ -104,7 +104,7 @@ identity:
   default_schema_id: default
   schemas:
     - id: default
-      url: file:///home/bot/Documents/Projects/goforensics-api/user-identity-schema.json
+      url: file:///path/to/goforensics-api/user-identity-schema.json
 
 courier:
   smtp:
