@@ -1,6 +1,6 @@
 # This file is part of Mooij Forensics (https://www.mooijforensics.com/)
 # Copyright (C) 2022 Marten Mooij (https://www.mooijtech.com/)
-FROM golang:1.16.0-alpine3.13
+FROM golang:1.18-alpine3.15
 
 WORKDIR /go/src/goforensics
 ADD . /go/src/goforensics
