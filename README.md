@@ -49,12 +49,12 @@ $ ./tusd -s3-endpoint http://127.0.0.1:9000 -s3-bucket BUCKET_NAME
 [Ory Kratos](https://www.ory.sh/kratos/) is used for identity management (authentication).
 
 ```bash
-# Edit kratos-development.yml:
+# Edit kratos.yml:
 # - Your SMTP provider (we use Postmark)
 # - Path to outlook-mapper and user-identity-schema
 #
 # Start Kratos 
-$ kratos serve -c kratos-development.yml --watch-courier
+$ kratos serve -c kratos.yml --watch-courier
 ```
 
 ### Go Forensics API
