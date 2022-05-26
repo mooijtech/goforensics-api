@@ -1,3 +1,4 @@
+go_forensics_api_port: 1337
 go_forensics_api_url: http://localhost:1337
 go_forensics_dashboard_url: http://localhost:3000
 allowed_origins:
